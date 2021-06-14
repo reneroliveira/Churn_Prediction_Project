@@ -1,0 +1,233 @@
+---
+title: "Churn Prediction Project"
+author: "Rener Oliveira"
+date: "June 11, 2021"
+output: rmdformats::readthedown
+bibliography: ../refs.bib
+---
+
+```{r setup, include=FALSE,message=FALSE,warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data description
+
+The dataset was released by [CrowdAnalytix Community](https://www.crowdanalytix.com/contests/why-customer-churn/) as part of their churn prediction 2012 challenge. It has 3333 customer entries with 20 features each, from a telecom company, which the real name was anonymized. We got a copy from [Kaggle](https://www.kaggle.com/mnassrib/telecom-churn-datasets) which was already divided  80% for the training set and 20% for test.
+
+```{r,message=FALSE,warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+library(scales)
+library(performanceEstimation)
+library(class)
+# library(glmnet)
+# library(ROCR)
+library(PRROC)
+source("../functions.R") #Auxiliar functions script
+```
+
+
+```{r}
+train <- read.csv("../data/churn-bigml-80.csv")
+test <- read.csv("../data/churn-bigml-20.csv")
+str(train)
+```
+
+The column names are self-explanatory, *eve* stands for *evenings*, *intl* for *international* and *vmail* for *voice mails*. We're gonna drop `State` and `Area.code` variables because to let our models be location unbiased, and transform `International.plan`,`Voice.mail.plan` and `Churn` columns into binary variables. We don't need to do any further manipulation since the data is already well treated and there is no missing data.
+
+```{r}
+train <- train[,-c(1,3)]
+test <- test[,-c(1,3)]
+
+train <- train %>% mutate(Churn=ifelse(Churn=="True",1,0),
+                          International.plan=ifelse(International.plan=="Yes",1,0),
+                          Voice.mail.plan=ifelse(Voice.mail.plan=="Yes",1,0))
+test <- test %>% mutate(Churn=ifelse(Churn=="True",1,0),
+                          International.plan=ifelse(International.plan=="Yes",1,0),
+                          Voice.mail.plan=ifelse(Voice.mail.plan=="Yes",1,0))
+
+sum(is.na(train))+sum(is.na(test))
+```
+
+# Visualizations
+
+First of all let's see the proportion of churners in our dataset.
+
+```{r}
+train_churn <- c(sum(train$Churn)/nrow(train),1-sum(train$Churn)/nrow(train))
+test_churn <- c(sum(test$Churn)/nrow(test),1-sum(test$Churn)/nrow(test))
+colors <- c('#FFEB6E','#32FF6E')
+par(mfrow=c(1,2))
+pie(train_churn,label = round(100*train_churn,1),main="Train",col = colors)
+pie(test_churn,label = round(100*test_churn,1),main="Test",col = colors)
+legend("bottomleft", c("% Churners","% Non-churners"), cex = 0.8,fill = colors)
+```
+
+
+Both splits have around 14.4% of churners, this proportion can lead to class imbalance bias, and we may need to deal with it with data-level solutions such as resampling techniques.
+
+Let`s analyse continuous variable correlation:
+```{r}
+# Reference: http://www.sthda.com/english/wiki/ggplot2-quick-correlation-matrix-heatmap-r-software-and-data-visualization
+corr <- round(cor(train[,-c(2,3,18)]),2)
+corr[lower.tri(corr)] <- NA
+corr <- melt(corr,na.rm=T)
+ggplot(data=corr,aes(x=Var2,y=Var1,fill = value)) + 
+  geom_tile(color="white") + 
+  scale_fill_gradient2(mid="#fddbc7",high="red",low="white",
+                       space="Lab",name = "Correlation\n") + 
+  labs(x="",y="") + theme_minimal() + 
+ theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))+
+ coord_fixed() + 
+  geom_text(aes(Var2, Var1, label = value), color = "black", size = 2.1)
+```
+
+As we can see above, the vast majority of the features are uncorrelated. But the pairs like total minutes/total charge are perfectly correlated, which makes sense if users are charged by minutes used. We choose to remove the charge variables to avoid multicollinearity.
+```{r}
+train <- train %>% select(-Total.day.charge,-Total.eve.charge,
+                          -Total.night.charge,-Total.intl.charge)
+test <- test %>% select(-Total.day.charge,-Total.eve.charge,
+                          -Total.night.charge,-Total.intl.charge)
+# write.csv(train,"../data/train_cleaned.csv",row.names=FALSE)
+# write.csv(test,"../data/test_cleaned.csv",row.names=FALSE)
+names(train)
+```
+
+Below we can see that churners make more calls to customer services than non-churners.
+
+```{r,fig.height=3.5,fig.width=7}
+plot_var("Customer.service.calls",nbins=10)
+```
+
+```{r}
+train %>% mutate(Churn=as.factor(Churn)) %>% 
+ggplot(aes(x=Total.day.calls,y=Customer.service.calls,color=Churn)) + 
+  geom_point(alpha=0.4,size=2) + theme_minimal()
+```
+
+```{r,fig.height=5,fig.width=5}
+train  %>% mutate(Churn=as.factor(Churn)) %>% 
+  group_by(Churn) %>% 
+  summarise(has_vmail_plan=sum(Voice.mail.plan)/n()) %>%  ggplot() + geom_bar(aes(x=Churn,y=has_vmail_plan,fill=Churn),stat="identity") +
+  scale_y_continuous(labels = scales::percent) + 
+  labs(title="% of customers with voice mail plan",y="") + theme_minimal()
+```
+
+```{r}
+train  %>% mutate(Churn=as.factor(Churn)) %>% 
+  group_by(Churn) %>% 
+  summarise(has_intl_plan=sum(International.plan)/n()) %>%  ggplot() + geom_bar(aes(x=Churn,y=has_intl_plan,fill=Churn),stat="identity") +
+  scale_y_continuous(labels = scales::percent) + 
+  labs(title="% of customers with International plan",y="") + theme_minimal()
+```
+
+
+# Evaluation Metrics
+
+There are a number of metrics to evaluate classification algorithms, we list some that we're gonna use, but in churn prediction problem we'll have to pay special atention to specific ones. (TP = True Positive, TN = True Negative, FP = False Positive, FN = False Negative, N = total number of observations).
+
+- Accuracy: (TP+TN)/N
+- Precision: TP/(TP+FP)
+- Recall: TP/(TP+FN)
+- AUC: Area under ROC curve
+- Lift
+
+[@class_imbalance] If the model yields probabilities, we sort the test predictions by these probabilities in a descending order, then we define the lift as the ratio between the percentage of positive entries in the top 10\% lines ($\beta_{10\%}$), and the percentage of churners (positives) in the entire test set ($\beta_0$). 
+
+$$\text{top decile lift} = \dfrac{\beta_{10\%}}{\beta_0}$$
+That's a widely used performance metric for this kind of problem. A top-decile lift of 2 means that the model classifies two times more churners in the top 10% group than a random classifier. We'll devote special attention to recall and top-decile lift, 'cause of the imbalance problem. If a model predicts 0 to every test observation, it would be ~85% accurate, but the lift, precision, and recall will be zero.
+
+# Resampling methods
+
+Our reference [@class_imbalance] presents a lot of methods to deal with class imbalance, from data-level solutions to adapted algorithms. We'll focus our tests on resampling our training set to create a rebalanced new one.
+
+- (ROS) Random Oversampling: randomly replicates churners instances.
+- (RUS) Random Undersampling: randomly eliminates the non-churners instances
+- (SMOTE) Synthetic minority oversampling technique [@smote]
+
+Smote oversamples the minority class by creating random linear interpolations between a given sample and its nearest neighbors.
+
+```{r}
+ROS <- function(data,y,target=1,seed=123){
+  #Creates a new dataset by replicating the minority instance (target)
+  set.seed(seed)
+  minority <- data[data[,y]==target,]
+  N <- nrow(data)
+  n <- nrow(minority)
+  new_mino <- N-2*n
+  new_instances_index <- sample(1:nrow(minority), new_mino, replace=TRUE)
+  new_instances <- minority[new_instances_index,]
+  return(rbind(data,new_instances))
+}
+
+RUS <- function(data,y,target = 0,seed=123){
+  #Ramdomly eliminates instances from the majority class(target)
+  set.seed(seed)
+  minority <- data[data[,y]!=target,]
+  majority <- data[data[,y]==target,]
+  n_elim <- nrow(majority)-nrow(minority)
+  to_elim <- sample(1:nrow(majority),n_elim,replace=FALSE)
+  majority <- majority[-to_elim,]
+  return(rbind(minority,majority))
+}
+#Smote function is implemented on 
+```
+
+# Classification Methods
+
+## Logistic Regression
+```{r}
+logistic_reg <- glm(Churn ~ ., data = train, family = "binomial")
+summary(logistic_reg)
+```
+
+The ROC curve:
+```{r}
+roc_logistic <- roc.curve(scores.class0 = logit2prob(predict(logistic_reg,newdata = test)),weights.class0=test$Churn,curve=TRUE)
+plot(roc_logistic,main = "ROC Curve - Logistic Regression") 
+```
+
+By changing the 10% percentile from the lift definition we can also generate a lift curve, but for model comparison, we'll use the decile version.
+
+```{r}
+quantiles <- seq(0.1,1,length.out = 10)
+lifts <- sapply(quantiles,function(x){return(lift(predict(logistic_reg,newdata =test),test$Churn,quantile=x))})
+plot(quantiles,lifts,type='b',main="Lift Curve")
+```
+```{r}
+evaluate <- function(ypred,ytrue,model,newdata,scores){
+  acc <- accuracy(ypred,ytrue)
+  rec <- recall(ypred,ytrue)
+  pr <- precision(ypred,ytrue)
+  decile_lift <- lift(scores,ytrue)
+  roc_curve <- roc.curve(scores.class0 = predict(model,newdata=newdata),weights.class0=newdata$Churn,curve=TRUE)
+  auc <- as.numeric(roc_curve['auc'])
+  results <- matrix(c(acc,pr,rec,decile_lift,auc),nrow=1)
+  colnames(results) <- c("Accuracy","Precision","Recall","Lift","AUC")
+  return(results)
+}
+```
+
+```{r}
+set.seed(123)
+resamples <- list("Original" = train,
+                  "ROS" = ROS(train,"Churn"),
+                  "RUS" = RUS(train,"Churn"),
+                  "SMOTE" =  smote(Churn ~ ., train, perc.over = 6.5,perc.under=1))
+resamples["SMOTE"][[1]]$Churn <- as.numeric(resamples["SMOTE"][[1]]$Churn)
+# ypred,ytrue,model,newdata,scores
+eval = list()
+for(i in c("Original","ROS","RUS")){
+  data <-  resamples[i][[1]]
+  model <- glm(Churn ~ ., data = data, family = "binomial")
+  scores <- predict(model,newdata =test)
+  ypred <- logit2prob(scores)>0.5
+  print(i)
+  print(evaluate(ypred,test$Churn,model,test,scores))
+}
+```
+
+
+# References
