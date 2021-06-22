@@ -1,0 +1,207 @@
+
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{fullpage}
+\usepackage{cancel}
+\usepackage{booktabs}
+\usepackage[top=2cm, bottom=4.5cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{amsmath,amsthm,amsfonts,amssymb,amscd}
+\usepackage{lastpage}
+\usepackage{enumerate}
+\usepackage{fancyhdr}
+\usepackage{mathrsfs}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{tikz-cd}
+\usepackage{pgfplots}
+\usepackage[
+backend=bibtex,
+sorting=ynt
+]{biblatex}
+\addbibresource{refs.bib}
+
+\newtheorem{defi}{Definition}
+\newtheorem{teo}{Theorem}
+\newtheorem{prop}{Proposition}
+\hypersetup{%
+	colorlinks=true,
+	linkcolor=blue,
+	linkbordercolor={0 0 1}
+}
+
+\setlength{\parindent}{0.0in}
+\setlength{\parskip}{0.05in}
+
+\newcommand\course{Rener Oliveira}
+\newcommand\lcur{\mathcal{L}}
+\newcommand{\real}{\mathbb{R}}
+\newcommand{\rr}{\mathbb{R}^2}
+\newcommand{\rn}{\mathbb{R}^n}
+\newcommand{\linesep}{{\color{black} \rule{\linewidth}{0.5mm} }}
+\newcommand{\rpos}{\mathbb{R}_{>0}}
+\newcommand{\blue}[1]{{\color{blue}{#1}}}
+\newcommand{\bd}[1]{\boldsymbol{#1}}
+\newcommand{\gt}{>}%broken keyboard
+\newcommand{\pow}{^}%broken keyboard
+\newcommand{\pr}{\operatorname{Pr}} %% probability
+\newcommand{\vr}{\operatorname{Var}} %% variance
+\newcommand{\rs}{X_1, X_2, \ldots, X_p} %%  random sample
+\newcommand{\irs}{X_1, X_2, \ldots} %% infinite random sample
+\newcommand{\rsd}{x_1, x_2, \ldots, x_p} %%  random sample, realised
+\newcommand{\Sm}{\bar{X}_n} %%  sample mean, random variable
+\newcommand{\sm}{\bar{x}_n} %%  sample mean, realised
+\newcommand{\Sv}{\bar{S}^2_n} %%  sample variance, random variable
+\newcommand{\sv}{\bar{s}^2_n} %%  sample variance, realised
+\newcommand{\bX}{\boldsymbol{X}} %%  random sample, contracted form (bold)
+\newcommand{\bx}{\boldsymbol{x}} %%  random sample, realised, contracted form (bold)
+\newcommand{\bT}{\boldsymbol{T}} %%  Statistic, vector form (bold)
+\newcommand{\bt}{\boldsymbol{t}} %%  Statistic, realised, vector form (bold)
+\newcommand{\emv}{\hat{\theta}_{\text{EMV}}}
+\newcommand{\defn}{\stackrel{\textrm{\scriptsize def}}{=}}
+\newcommand{\op}{\operatorname}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\norm}{\mathcal{N}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\iid}{\overset{\text{iid}}{\sim}}
+\pagestyle{fancyplain}
+\headheight 35pt        
+\chead{\textbf{\Large Churn Prediction Project}}
+\lhead{Machine Learning\\EMAp FGV}
+\rhead{\small{\course \\ \today}}
+\lfoot{}
+\cfoot{}
+\rfoot{\small\thepage}
+\headsep 1.5em
+\usepackage{xcolor}
+\definecolor{maroon}{cmyk}{0, 0.87, 0.68, 0.32}
+\definecolor{halfgray}{gray}{0.55}
+\definecolor{ipython_frame}{RGB}{207, 207, 207}
+\definecolor{ipython_bg}{RGB}{247, 247, 247}
+\definecolor{ipython_red}{RGB}{186, 33, 33}
+\definecolor{ipython_green}{RGB}{0, 128, 0}
+\definecolor{ipython_cyan}{RGB}{64, 128, 128}
+\definecolor{ipython_purple}{RGB}{170, 34, 255}
+
+\usepackage{listings}
+\usepackage{color}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+\lstset{ %
+	language=R,                     % the language of the code
+	basicstyle=\footnotesize,       % the size of the fonts that are used for the code
+	numbers=left,                   % where to put the line-numbers
+	numberstyle=\tiny\color{gray},  % the style that is used for the line-numbers
+	stepnumber=1,                   % the step between two line-numbers. If it's 1, each line
+	% will be numbered
+	numbersep=5pt,                  % how far the line-numbers are from the code
+	backgroundcolor=\color{white},  % choose the background color. You must add \usepackage{color}
+	showspaces=false,               % show spaces adding particular underscores
+	showstringspaces=false,         % underline spaces within strings
+	showtabs=false,                 % show tabs within strings adding particular underscores
+	frame=single,                   % adds a frame around the code
+	rulecolor=\color{black},        % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. commens (green here))
+	tabsize=2,                      % sets default tabsize to 2 spaces
+	captionpos=b,                   % sets the caption-position to bottom
+	breaklines=true,                % sets automatic line breaking
+	breakatwhitespace=false,        % sets if automatic breaks should only happen at whitespace
+	title=\lstname,                 % show the filename of files included with \lstinputlisting;
+	% also try caption instead of title
+	keywordstyle=\color{blue},      % keyword style
+	commentstyle=\color{dkgreen},   % comment style
+	stringstyle=\color{mauve},      % string literal style
+	%escapeinside={\%*}{*)},         % if you want to add a comment within your code
+	morekeywords={*,...}            % if you want to add more keywords to the set
+} 
+\lstset{
+	breaklines=true,
+	%
+	extendedchars=true,
+	literate=
+	{á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+	{Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+	{à}{{\`a}}1 {è}{{\`e}}1 {ì}{{\`i}}1 {ò}{{\`o}}1 {ù}{{\`u}}1
+	{À}{{\`A}}1 {È}{{\'E}}1 {Ì}{{\`I}}1 {Ò}{{\`O}}1 {Ù}{{\`U}}1
+	{ä}{{\"a}}1 {ë}{{\"e}}1 {ï}{{\"i}}1 {ö}{{\"o}}1 {ü}{{\"u}}1
+	{Ä}{{\"A}}1 {Ë}{{\"E}}1 {Ï}{{\"I}}1 {Ö}{{\"O}}1 {Ü}{{\"U}}1
+	{â}{{\^a}}1 {ê}{{\^e}}1 {î}{{\^i}}1 {ô}{{\^o}}1 {û}{{\^u}}1
+	{Â}{{\^A}}1 {Ê}{{\^E}}1 {Î}{{\^I}}1 {Ô}{{\^O}}1 {Û}{{\^U}}1
+	{œ}{{\oe}}1 {Œ}{{\OE}}1 {æ}{{\ae}}1 {Æ}{{\AE}}1 {ß}{{\ss}}1
+	{ç}{{\c c}}1 {Ç}{{\c C}}1 {ø}{{\o}}1 {å}{{\r a}}1 {Å}{{\r A}}1
+	{€}{{\EUR}}1 {£}{{\pounds}}1
+}
+
+%%
+%% Python definition (c) 1998 Michael Weber
+%% Additional definitions (2013) Alexis Dimitriadis
+%% modified by me (should not have empty lines)
+%%
+
+\begin{document}
+	\tableofcontents
+	\newpage
+	\section{Introduction}
+	
+	Customer churn (loss of customers) is a problem for telecommunication companies, considering an environment of increasing competition. When a company loses customers, it not only loses the future revenue, but also the investment made to get those customers. According to \cite{class_imbalance}, some studies show that acquiring new clients is five to six times more expensive than retaining existing ones. 
+	
+	Telecom companies have two approaches to deal with churners: the reactive one, which tries to convince customers who wants to cancel to stay; and the proactive one, which predicts who is more likely to churn before they explicitly decide to churn and send them suitable offers to avoid their loss.
+	
+	The aim of this project is to study the churn problem using the \href{https://www.crowdanalytix.com/contests/why-customer-churn/}{CrowdAnalytix} dataset, which has information regarding usage patterns from customers of a telecom company, which the real name was anonymized. This data was part of a Machine Learning Challenge issued by CrowdAnalytix in 2012.
+	
+	The raw data contains 3333 observations of 20 variables which are described in Table \ref{features}. The \href{https://www.kaggle.com/mnassrib/telecom-churn-datasets}{Kaggle} copy of the data was already divided into 80\% train and 20\% test.
+	
+	\begin{table}[!htb]
+		\centering
+		\caption{Features Description}
+		\label{features}
+		\begin{tabular}{|c|c|} \hline
+			\textbf{Variable} & \textbf{Description}\\  \hline 
+			 State  &  Customer's state \\ \hline
+			 Account.length& Time since subscription \\ \hline
+			 Area.code   & Phone number area code\\ \hline 
+			 International.plan& Has an international plan? (Yes=1,No=0)\\ \hline 
+			 Voice.mail.plan    & Has a voicemail plan? (Yes=1,No=0)\\ \hline
+			 Number.vmail.messages& Number of voicemail messages\\ \hline
+			 Total.day.minutes& Total minutes used during the day\\ \hline
+			 Total.day.calls& Total calls made during days\\ \hline
+			 Total.day.charge& Total charge during days\\ \hline
+			 Total.eve.minutes& Total minutes used during evenings\\ \hline
+			 Total.eve.calls& Total calls made during evenings\\ \hline
+			 Total.eve.charge& Total charge during evenings\\ \hline 
+			 Total.night.minutes & Total minutes used during nights\\ \hline 
+			 Total.night.calls& Total calls made during nights\\ \hline
+			 Total.night.charge& Total charge during nights\\ \hline 
+			 Total.intl.minutes& Total international minutes used\\ \hline 
+			 Total.intl.calls& Total international calls made\\ \hline 
+			 Total.intl.charge& Total international charge\\\hline 
+			 Customer.service.calls& Number of calls to customer services\\ \hline 
+			 Churn & Has the customer churned? (Yes=1,No=0)\\ \hline
+		\end{tabular}
+	\end{table}
+	
+	\section{Data Cleaning and EDA}
+	
+	\section{Classification Methods}
+	.... Describe evaluation metrics
+	
+	.... breafly describe ML methods (Knn, logistic regression, naive bayes (maybe) bagging, random forest, SVM) 
+	
+	.... describe resampling methods to handle imbalance
+	
+	.... algorithm-level solutions (cost-sensitive learning,...)
+	
+	\section{Results}
+	present and discuss metric's table ...
+	
+	\section{Conclusions and Future Work}
+	\newpage
+	\addcontentsline{toc}{section}{References}
+	%			\bibliography{refs}
+	\printbibliography
+\end{document}

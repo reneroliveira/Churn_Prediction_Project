@@ -49,3 +49,36 @@ rocplot = function(pred, truth, ...){
   plot(perf, ...)
 }
 
+ROS <- function(data,y,target=1,seed=123){
+  #Creates a new dataset by replicating the minority instance (target)
+  set.seed(seed)
+  minority <- data[data[,y]==target,]
+  N <- nrow(data)
+  n <- nrow(minority)
+  new_mino <- N-2*n
+  new_instances_index <- sample(1:nrow(minority), new_mino, replace=TRUE)
+  new_instances <- minority[new_instances_index,]
+  return(rbind(data,new_instances))
+}
+
+RUS <- function(data,y,target = 0,seed=123){
+  #Ramdomly eliminates instances from the majority class(target)
+  set.seed(seed)
+  minority <- data[data[,y]!=target,]
+  majority <- data[data[,y]==target,]
+  n_elim <- nrow(majority)-nrow(minority)
+  to_elim <- sample(1:nrow(majority),n_elim,replace=FALSE)
+  majority <- majority[-to_elim,]
+  return(rbind(minority,majority))
+}
+
+evaluate <- function(ypred,ytrue,model,newdata,scores){
+  acc <- accuracy(ypred,ytrue)
+  rec <- recall(ypred,ytrue)
+  decile_lift <- lift(scores,ytrue)
+  roc_curve <- roc.curve(scores.class0 = predict(model,newdata=newdata),weights.class0=newdata$Churn,curve=TRUE)
+  auc <- as.numeric(roc_curve['auc'])
+  results <- matrix(c(acc,rec,decile_lift,auc),nrow=1)
+  colnames(results) <- c("Accuracy","Recall","Lift","AUC")
+  return(results)
+}
