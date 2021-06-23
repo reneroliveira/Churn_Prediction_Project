@@ -72,13 +72,22 @@ RUS <- function(data,y,target = 0,seed=123){
   return(rbind(minority,majority))
 }
 
-evaluate <- function(ypred,ytrue,scores){
+evaluate <- function(ypred,ytrue,scores,name=""){
   acc <- accuracy(ypred,ytrue)
   rec <- recall(ypred,ytrue)
   decile_lift <- lift(scores,ytrue)
   roc_curve <- roc.curve(scores.class0 = scores,weights.class0=ytrue,curve=TRUE)
   auc <- as.numeric(roc_curve['auc'])
   results <- matrix(c(acc,rec,decile_lift,auc),nrow=1)
+  row.names(results) <- name
   colnames(results) <- c("Accuracy","Recall","Lift","AUC")
   return(results)
+}
+
+sourceDir <- function(path, trace = TRUE, ...) {
+  for (nm in list.files(path, pattern = "\\.[RrSsQq]$")) {
+    if(trace) cat(nm,":")           
+    source(file.path(path, nm), ...)
+    if(trace) cat("\n")
+  }
 }

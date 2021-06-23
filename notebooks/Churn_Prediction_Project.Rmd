@@ -23,6 +23,10 @@ library(scales)
 library(performanceEstimation)
 library(class)
 library(PRROC)
+library(caret)
+library(fastDummies)
+library(randomForest)
+library(doParallel)
 source("../functions.R") #Auxiliar functions script
 ```
 
@@ -203,54 +207,309 @@ resamples <- list("Original" = train,
 
 #save(resamples,file="../data/resamples.rda")
 
-
+final_results <- matrix(NA,0,4)
+colnames(final_results) <- c("Accuracy","Recall","Lift","AUC")
 for(i in c("Original","ROS","RUS","SMOTE")){
   data <-  resamples[i][[1]]
   model <- glm(Churn ~ ., data = data, family = "binomial")
   scores <- predict(model,newdata =test)
   ypred <- logit2prob(scores)>0.5
-  print(i)
-  print(evaluate(ypred,test$Churn,scores))
+  suffix <- ifelse(i!="Original",paste("+",i),"")
+  res <- evaluate(ypred,test$Churn,scores,name=paste("LogisticReg",suffix))
+  final_results <- rbind(final_results,res)
 }
+final_results
+```
+
+Although we lost accuracy with resampling, we got much higher recall which is a crucial metric to this problem, as we stated before.
+
+Let's review the coefficients of SMOTE version of the regression, which was the best one in terms of recall and lift. We got more statistically significant features than before. In both cases the "strongest" predictor (in terms of z-value) was `Customer.service.calls`.
+
+```{r}
+data <-  resamples["SMOTE"][[1]]
+smote_logistic <- glm(Churn ~ ., data = data, family = "binomial")
+summary(smote_logistic)
 ```
 
 ## K-Nearest-Neighbors
 
-Let's compare KNN performance between the resamples generated before. We'll perform cross-validation to select k, using the undersampled dataset.
+Let's compare KNN performance between the resamples generated before. We'll perform 5-fold cross-validation to select K, using the recall(sensitivity) as the performance metric. We'll use use the undersampled dataset to avoid imbalanced folds.
 
 ```{r}
-# for(i in c("Original","ROS","RUS","SMOTE")){
-#   data <-  resamples[i][[1]]
-#   model <- glm(Churn ~ ., data = data, family = "binomial")
-#   scores <- predict(model,newdata =test)
-#   ypred <- logit2prob(scores)>0.5
-#   print(i)
-#   print(evaluate(ypred,test$Churn,model,test,scores))
-# }
-t2 <- dummy_cols(resamples["SMOTE"][[1]],select_columns = "Region") %>% select(-Region,-`Region_North Central`)
-tes2 <- dummy_cols(test,select_columns = "Region") %>% select(-Region,-`Region_North Central`)
-churn.knn = knn(train = t2[,-15] , test = tes2[,-15], cl = t2$Churn, k=5, prob=TRUE)
-knn.probs = attr(churn.knn,"prob")
+#Code reference: https://rpubs.com/njvijay/16444
+set.seed(123)
+trControl <- trainControl(method  = "cv",
+                          number  = 5,
+                          classProbs=TRUE,
+                          summaryFunction = twoClassSummary)
+data <- dummy_cols(resamples["RUS"][[1]],select_columns = "Region") %>% select(-Region,-`Region_North Central`)
 
-evaluate(churn.knn,tes2$Churn,knn.probs)
+data <- data  %>%
+   mutate(Churn = factor(as.numeric(Churn)-1,
+           labels = make.names(levels(Churn))))
 
+cv.knn <- train(Churn ~ .,
+     method     = "knn",
+     tuneGrid   = expand.grid(k = 1:10),
+     trControl  = trControl,
+     preProcess = c("center","scale"),
+     data = data)
+cv.knn
+```
 
-n = nrow(resamples["RUS"][[1]])
-n_rep = 5
-k_values = c(2:15)
+Although the package suggests K=9 with the best AUC-ROC, we'll use K=8, which got a higher sensitivity (recall). The dataset was standardized.
 
-lift_cv = matrix(NA, n_rep, length(k_values))
+```{r}
+K=8
+set.seed(123)
+new_test <- dummy_cols(test,select_columns = "Region") %>% select(-Region,-`Region_North Central`)
 
-for(i_n_rep in 1:n_rep){
-  i_treino = sample(1:n, n/2)
-  i_teste = seq(1:n)[-i_treino]
-  for(i_k in 1:length(k_values)){
-    reg_auto_poly = lm(mpg ~ poly(horsepower, i_degree), Auto[i_treino,])
-    pred_reg = predict(reg_auto_poly, Auto[i_teste,])
-    mse[i_n_rep, i_degree] = mean((pred_reg- Auto[i_teste,"mpg"])^2)
-  }
+for(i in c("Original","ROS","RUS","SMOTE")){
+  X_train_scaled <-  dummy_cols(resamples[i][[1]],select_columns = "Region") %>% select(-Region,-`Region_North Central`,-Churn) %>% scale()
+  y_train <- resamples[i][[1]]$Churn
+  center <- attr(X_train_scaled,"scaled:center")
+  scale <- attr(X_train_scaled,"scaled:scale")
+  churn.knn = knn(train = X_train_scaled, 
+                  test = scale(new_test[,-15],
+                               center=center,
+                               scale=scale),
+                  cl = y_train,
+                  k=K, prob=TRUE)
+  scores <- attr(churn.knn,"prob")
+  suffix <- ifelse(i!="Original",paste("+",i),"")
+  res <- evaluate(churn.knn,test$Churn,scores,name=paste("KNN",suffix))
+  final_results <- rbind(final_results,res)
+}
+final_results[5:8,]
+```
+
+Again, the model trained in the original dataset performed poorly in terms of recall/lift. In general KNN performed badly, but the smoted dataset yields acceptable metrics (AUC>0.5, lift>1).
+
+## Bagging & Random Forest
+
+Let's try bagging with default R parameters:
+
+```{r}
+set.seed(123)
+bag.churn <- randomForest(Churn~.,data=train,mtry=15,importance=TRUE)
+ypred.bag <- predict(bag.churn,newdata = test,type="response")
+probs.bag <- predict(bag.churn,newdata = test,type="prob")[,2]
+
+evaluate(ypred.bag,test$Churn,probs.bag)
+```
+
+Pretty good results in general! But recall is lower than smoted logistic regression. Now let's use the resampled training sets:
+```{r}
+set.seed(123)
+for(i in c("Original","ROS","RUS","SMOTE")){
+  data <-  resamples[i][[1]]
+  model <- randomForest(Churn~.,data=data,mtry=15)
+  scores <- predict(model,newdata =test,type="prob")[,2]
+  ypred <- predict(model,newdata = test,type="response")
+  suffix <- ifelse(i!="Original",paste("+",i),"")
+  res <- evaluate(ypred,test$Churn,scores,name=paste("Bagging",suffix))
+  final_results <- rbind(final_results,res)
+}
+final_results[9:12,]
+```
+
+As shown, RUS and SMOTE yielded better recall without too much prejudice to other metrics, specially SMOTE, with a higher lift than RUS.
+
+Let's plot the SMOTE version ROC curve:
+
+```{r,fig.height=4,fig.width=5.5}
+data <-  resamples["SMOTE"][[1]]
+smote.bag <- randomForest(Churn~.,data=data,mtry=15)
+scores.bag <- predict(smote.bag,newdata =test,type="prob")[,2]
+roc.bag <- roc.curve(scores.class0 = scores,weights.class0=test$Churn,curve=TRUE)
+plot(roc.bag,main = "ROC curve: Bagging + SMOTE")
+```
+
+For Random Forest we'll tune the `mtry` parameter using OOB error. The default value is $\lfloor\sqrt{p}\rfloor$, which in our case is 3, but as shown below, using `mtry`=6 we get a lower OOB error.
+
+```{r}
+set.seed(123)
+tune.rf.churn <- tuneRF(train[,-15], train[,15], mtryStart = 3, ntreeTry=500)
+```
+
+Let's now tune the `ntree` parameter:
+
+```{r,warning=FALSE,message=F}
+#Code reference: https://rpubs.com/phamdinhkhanh/389752
+set.seed(123)
+control <- trainControl(method = 'repeatedcv',
+                        number = 5,
+                        search = 'grid',
+                        classProbs = T,
+                        summaryFunction = twoClassSummary)
+#create tunegrid
+tunegrid <- expand.grid(.mtry = c(6))
+modellist <- list()
+
+data <- train  %>%
+   mutate(Churn = factor(as.numeric(Churn)-1,
+           labels = make.names(levels(Churn))))
+#train with different ntree parameters
+for (ntree in c(500,1000,1500,2000,2500)){
+  set.seed(123)
+  fit <- train(Churn~.,
+               data = data,
+               method = 'rf',
+               tuneGrid = tunegrid,
+               trControl = control,
+               ntree = ntree)
+  key <- toString(ntree)
+  modellist[[key]] <- fit
 }
 
+#Compare results
+results <- resamples(modellist)
+summary(results)
 ```
+
+Since the metrics weren't brutally affected by the number of trees parameter, we'll use R's default value `ntree = 500` to save computational resources.
+
+```{r}
+set.seed(123)
+for(i in c("Original","ROS","RUS","SMOTE")){
+  data <-  resamples[i][[1]]
+  model <- randomForest(Churn~.,data=data,mtry=6,ntree=500)
+  scores <- predict(model,newdata =test,type="prob")[,2]
+  ypred <- predict(model,newdata = test,type="response")
+  suffix <- ifelse(i!="Original",paste("+",i),"")
+  res <- evaluate(ypred,test$Churn,scores,name=paste("RForest",suffix))
+  final_results <- rbind(final_results,res)
+}
+final_results[13:16,]
+```
+
+Again, resampled training sets enhanced recall, but the original dataset got a higher lift.
+
+###  Bagging-based ensembles
+
+Since now we've used preprocessed resampled datasets to deals with imbalance in the traning set. We can adapt existing algorithms to deal with this problem directly from  the original data. Now we're try three bagging variations: RUSBagging, ROSBagging and SMOTEBagging. The modification is that, instead of bootstrapping the entire dataset, for each bag, one uses RUS,ROS or SMOTE to create a balanced sample. More detailed explanations can be found in the article (@ensembles).
+
+We'll use the R implementation from [IRIC package](https://github.com/shuzhiquan/IRIC) based on the article (@iric).
+
+**RUSBagging:**
+
+```{r}
+set.seed(123)
+source("../../IRIC/R/Ensemble-based level/BalanceBagging.R")
+rusbag <- bbaging(train[,-15],train[,15],numBag=500,type="RUSBagging",allowParallel=TRUE)
+rusbag.pred <- predict(rusbag, test[,-15],type="class")
+rusbag.prob <- predict(rusbag,test[,-15],type="probability")[,2]
+final_results <- rbind(final_results,
+                       evaluate(rusbag.pred,test$Churn,
+                                rusbag.prob,name="RUSBagging"))
+final_results[17,]
+```
+**ROSBagging:**
+```{r}
+set.seed(123)
+rosbag <- bbaging(train[,-15],train[,15],numBag=500,type="ROSBagging",allowParallel=TRUE)
+rosbag.pred <- predict(rosbag, test[,-15],type="class")
+rosbag.prob <- predict(rosbag,test[,-15],type="probability")[,2]
+final_results <- rbind(final_results,
+                       evaluate(rosbag.pred,test$Churn,
+                                rosbag.prob,name="ROSBagging"))
+final_results[17:18,]
+```
+**SMOTEBagging:**
+```{r,message=F,warning=F}
+set.seed(123)
+smotebag <- bbaging(train[,-15],train[,15],numBag=500,type="SMOTEBagging",iter=40)
+smotebag.pred <- predict(smotebag, test[,-15],type="class")
+smotebag.prob <- predict(smotebag,test[,-15],type="probability")[,2]
+
+final_results <- rbind(final_results,
+                       evaluate(smotebag.pred,test$Churn,
+                                smotebag.prob,name="SMOTEBagging"))
+final_results[c(9,17:19),]
+```
+
+All 3 methods yielded better recall measures than original bagging, but ROSBagging got a higher lift among them (although original bagging was better). The other metrics were pretty close among the 3 models.
+
+## AdaBoosting 
+
+The function `bboost` is implemented on this [GitHub repo](https://github.com/shuzhiquan/IRIC) based on the article @iric. If you want to reproduce the following chunk, install the IRIC package following the repo instructions.
+
+First we try classical AdaBoosting:
+
+```{r}
+set.seed(123)
+source("../../IRIC/R/Ensemble-based level/BalanceBoost.R")
+adaboost.churn <- bboost(train[,-15], train[,15], base = treeBoost, type = "AdaBoost")
+adaboost.pred <- predict(adaboost.churn, test[,-15],type="class")
+adaboost.prob <- predict(adaboost.churn,test[,-15],type="probability")[,2]
+final_results <- rbind(final_results,
+                       evaluate(adaboost.pred,test$Churn,
+                                adaboost.prob,name="AdaBoost"))
+final_results[20,]
+```
+
+We got satisfactory accuracy, lift, and AUC, but not so high recall. Let's try the cost-sensitive AdaBoost algorithm (AdaC2) assigning higher weights to the minority class (`costRatio` parameter). We'll tune this parameter using a validation set with 1/8 of the train size., respecting the same churn proportion.
+
+```{r,warning=FALSE,message=FALSE}
+set.seed(123)
+val_size <- floor(nrow(train)/8)
+churn_prop <- sum(train$Churn==1)/nrow(train)
+val_churners <- sample(which(train$Churn==1),size=floor(churn_prop*val_size))
+val_non_churners <- sample(which(train$Churn==0),size=val_size-length(val_churners))
+val_index <- c(val_churners,val_non_churners)
+validation <- train[val_index,]
+
+costs <- seq(1,5,length.out = 21)
+val_results <- matrix(NA,length(costs),5)
+colnames(val_results) <- c("Cost","Accuracy","Recall","Lift","AUC")
+val_results[,1] <- costs
+for(i in 1:length(costs)){
+  adac2.churn <- bboost(train[-val_index,-15], train[-val_index,15], base = treeBoost, type = "AdaC2",costRatio = costs[i])
+  adac2.pred <- predict(adac2.churn, validation[,-15],type="class")
+  adac2.prob <- predict(adac2.churn,validation[,-15],type="probability")[,2]
+  val_results[i,2:5] <- evaluate(adac2.pred,validation$Churn,adac2.prob)
+}
+val_results[,1:3]
+```
+
+```{r,fig.height=3.5,fig.width=7}
+val_results[,1:3] %>% as.data.frame() %>% ggplot(aes(x=Cost)) + geom_line(aes(y=Accuracy),linetype="dashed",color='red')+
+  geom_point(aes(y=Accuracy),color="red")+
+  geom_line(aes(y=Recall),linetype="dashed")+
+  geom_point(aes(y=Recall)) +
+  scale_x_continuous(breaks = costs) + labs(title = "Red=Accuracy, Black=Recall",y="")
+```
+
+Although we argued that Recall is a crucial measure in our case, we don't want a low accuracy, so 1.4 seems to be a good equilibrium point.
+
+```{r}
+adac2.churn <- bboost(train[,-15], train[,15], base = treeBoost, type = "AdaC2",costRatio = 1.4)
+adac2.pred <- predict(adac2.churn, test[,-15],type="class")
+adac2.prob <- predict(adac2.churn,test[,-15],type="probability")[,2]
+
+final_results <- rbind(final_results,
+                       evaluate(adac2.pred,test$Churn,
+                                adac2.prob,name="AdaC2"))
+final_results[20:21,]
+```
+
+Losing some accuracy, we got a better recall without too much prejudice to other measures. 
+
+# Final Results and comments
+
+Let's see the whole table comparing all models and discover who is the champion for each measure.
+
+```{r}
+final_results
+```
+```{r}
+apply(final_results,2,function(x){
+  return(row.names(final_results)[which(x==max(x))])})
+```
+
+Although we have these champions for each metric, excluding KNN and the basic Logistic Regression all the models performed very well. A recall lower bound of 0.71 (AdaBoost) means we're identifying 71% of the real churners. 
+
+A lift lower bound of 3.1 (Logistic + RUS/ROS) means we have 3.1 times more churners in the top decile than a random classifier would have. This is ~44%, but excluding logistic, all lifts were higher than 5, which corresponds to ~71% of churners in the top decile. Our lift champion, Random Forest almost reached the maximum lift, so using these models to target the top decile with a suitable offer would be a good idea to avoid churn.
+
 
 # References
