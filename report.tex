@@ -20,6 +20,8 @@
 \usepackage{tikz}
 \usepackage{tikz-cd}
 \usepackage{pgfplots}
+\usepackage{caption}
+\usepackage{subcaption}
 \usepackage[
 backend=bibtex,
 sorting=ynt
@@ -37,7 +39,15 @@ sorting=ynt
 
 \setlength{\parindent}{0.0in}
 \setlength{\parskip}{0.05in}
-
+\usepackage{array}
+\usepackage{multirow}
+\newcommand\MyBox[2]{
+  \fbox{\lower0.75cm
+    \vbox to 1.7cm{\vfil
+      \hbox to 1.7cm{\hfil\parbox{1.4cm}{#1\\#2}\hfil}
+      \vfil}%
+  }%
+}
 \newcommand\course{Rener Oliveira}
 \newcommand\lcur{\mathcal{L}}
 \newcommand{\real}{\mathbb{R}}
@@ -187,14 +197,117 @@ sorting=ynt
 	
 	\section{Data Cleaning and EDA}
 	
+	The State variable was transformed into regions (Northeast, South, North Central, and West), reducing the number of dummy variables from 50 to just 4. We also removed four columns from the data, which can be explained by the Figure \ref{corr} continuous variables correlation plot\footnote{We generated all plots in this section from the training set.}. 
+	
+	\begin{figure}[!htb]
+		\centering
+		\caption{Continuous variables correlation}
+		\label{corr}
+		\includegraphics[scale=1]{images/corr.png}
+	\end{figure}
+	
+	As we can see above, the vast majority of the features are uncorrelated. But the pairs like total minutes/total charge are perfectly correlated, which makes sense if users are charged by minutes used. We choose to remove the charge variables to avoid multicollinearity.
+	
+	Visualizing the distribution of some variables we can find interesting patterns. In Figure \ref{voicemail} we see that among churners, we have fewer customers with voice mail plan (approximately 16.75\%) comparing with non-churners subscribed to this plan (approximately 29.32\%). On the other hand, we have much more churners with an international plan, comparing with non-churners, as shown in Figure \ref{international}. A possible explanation would be that international plan subscribers are finding better offers in this service with competitors.
+	
+	\begin{figure}[!htb]
+		\begin{subfigure}{.5\textwidth}
+		\centering
+		\includegraphics[scale=0.7]{images/voicemail.png}
+		\caption{Voicemail clients proportion}
+		\label{voicemail}
+	\end{subfigure}
+	\begin{subfigure}{.5\textwidth}
+		\centering
+		\includegraphics[scale=0.7]{images/international.png}
+		\caption{International plan clients proportion}
+		\label{international}
+		\end{subfigure}
+	\caption{Categorical Variables}
+	\end{figure}
+
+	Another insightful plot is the one in Figure \ref{cus_services}. We can see that churners make more calls to customer services than non-churners; these calls may be related to complaints about the services and unsatisfactory manifestations.
+	
+	\begin{figure}[!htb]
+		\centering
+		\includegraphics[scale=0.685]{images/customer_services.png}
+		\caption{Customer services calls distribution}
+		\label{cus_services}
+	\end{figure}
+
+Taking a look at the regional distribution in Figure \ref{region}, although Northeast and South regions have more churners, the churn percentage in all of them is around 14.6\% which is the percentage in the training set as a whole.
+	\begin{figure}[!htb]
+		\centering
+		\includegraphics[scale=0.685]{images/region.png}
+		\caption{Churners distribution by region}
+		\label{region}
+	\end{figure}
+
+About the percentage of churners, an approximate proportion of 14\% in the training and test set (see Figure \ref{imbalance}) might be a problem for classifier algorithms because the sample will bias the learning models to the majority class (non-churners). These models may behave poorly in the prediction power of the minority class (churners). In the next section, we discuss some ways to handle this potential problem.
+
+\begin{figure}[!htb]
+	\centering
+	\includegraphics[scale=0.7]{images/imbalance.png}
+	\caption{Churners percentage by dataset}
+	\label{imbalance}
+\end{figure}
+	\newpage
 	\section{Classification Methods}
-	.... Describe evaluation metrics
+	\subsection{Evaluation Metrics}
+	The task of churn prediction is a binary classification problem, i.e we have a $n\times p$ features matrix $\bd X$, and a target column vector $\bd y \in \{0,1\}^{n}$, which represents churners as stated in the introduction. We want to learn functions  that receive an $p$-dimensional feature input and outputs a binary value, 0 or 1.
 	
-	.... breafly describe ML methods (Knn, logistic regression, naive bayes (maybe) bagging, random forest, SVM) 
+	With a learned function/model in hands we can apply it in our test set and build the Confusion Matrix which summarizes how the model has performed.
 	
-	.... describe resampling methods to handle imbalance
+	%https://tex.stackexchange.com/questions/20267/how-to-construct-a-confusion-matrix-in-latex
+	\renewcommand\arraystretch{1.5}
+\setlength\tabcolsep{0pt}
+\begin{table}[!htb]
+	\centering
+	\begin{tabular}{c >{\bfseries}r @{\hspace{0.7em}}c @{\hspace{0.4em}}c @{\hspace{0.7em}}l}
+		\multirow{10}{*}{\parbox{1.1cm}{\bfseries\raggedleft Actual\\ Value}} & 
+		& \multicolumn{2}{c}{\bfseries Model Outcome} & \\
+		& & \bfseries 1 & \bfseries 0 \\
+		& 1 & \MyBox{(TP) True}{Positive} & \MyBox{(FN) False}{Negative}  \\[2.4em]
+		& 0 & \MyBox{(FP) False}{Positive} & \MyBox{(TN) True}{Negative}  \\
+	\end{tabular}
+\caption{Confusion Matrix}
+\end{table}
+
+From this table we can derive the following metrics:
+\begin{itemize}
+	\item Accuracy: (TP+TN)/N;
+	\item Recall: TP/(TP+FN),
+\end{itemize}
+where N is the total number of test observations (TP+TN+FP+FN). Accuracy measures what proportion of the test set our model predicted correctly. When dealing with class imbalance, a model which assigns the majority class to everyone will have high accuracy but will perform poorly in predicting positive instances (churners).
+
+The goal of our prediction algorithm is to correctly identify churners to proactively prevent customer loss. So, in this case, a False Negative has much more impact than a False positive, because the company wants to predict as many churners as possible before they churn. A False Negative may lead to a customer loss that would be avoidable if predicted correctly, but targeting an offer/discount to a False Positive that wouldn't churn is not too harmful, because this client will stay loyal to the company.
+
+Recall aims to measure prediction power among positive instances, i.e the proportion of actual churners we're capturing by the algorithm.
+
+We're also gonna use the \textbf{AUC-ROC} metric, a number between 0 and 1 with measures the area under ROC curve, which is generated plotting false positive rate (FP/(FP+TN)) against true positive rate (TP/(TP+FN)) using different probability/odds thresholds outputted from models. A random classifier will have an AUC equal to $0.5$.
+
+Another important metric, widely used in literature and industry is the \textbf{lift}\cite{class_imbalance}. If the model yields probabilities, we sort the test predictions by these probabilities in a descending order, then we define the lift as the ratio between the percentage of positive entries in the top 10\% lines ($\beta_ {10\%}$), and the percentage of churners (positives) in the entire test set ($\beta_0$). We then define the \textbf{top-decile-lift} as the fraction:
+$$\dfrac{\beta_{10\%}}{\beta_0}$$
+
+We can use other percentile values instead of 10\%, but we'll use the decile version since it's widely used performance metric for this kind of problem. A top-decile lift of 2 means that the model classifies two times more churners in the top 10\% group than a random classifier. We’ll devote special attention to recall and top-decile lift and recall because of the imbalance problem. If a model predicts 0 to every test observation, it would be approximately 85\% accurate, but recall would be zero, and lift undefined.
+
+
+
+	\subsection{models}
+	.... breafly describe ML methods (Knn, logistic regression, naive bayes (maybe) bagging, random forest, boosting, SVM) 
 	
-	.... algorithm-level solutions (cost-sensitive learning,...)
+	\subsection{Resampling methods}
+	The reference\cite{class_imbalance} presents a lot of data-level solutions to deal with class imbalance. The goal is to resample our training set to create a rebalanced new one. We'll focus on the three techniques mentioned below:
+	
+	\begin{itemize}
+		\item (ROS) Random Oversampling: randomly replicates churners instances;
+		\item (RUS) Random Undersampling: randomly eliminates the non-churners instances;
+		\item (SMOTE) Synthetic minority oversampling technique\cite{smote}
+	\end{itemize}
+	
+	With undersampling, we might be removing valuable information from the dataset. Oversampling may cause biased observations since we're going to replicate observations several times to rebalance the data. 
+	
+	Smote oversamples the minority class in a smarter way, creating synthetic new data. To do that, for each existing (churner) observation SMOTE selects a random point out of the k-nearest-neighbors (we'll use the default k=5) and creates a new point by performing a random linear interpolation between the point in consideration and the selected neighbor. The article \cite{smote} shows details of this algorithm. We'll use the R implementation of performanceEstimation package\cite{performanceestimation}
 	
 	\section{Results}
 	present and discuss metric's table ...
