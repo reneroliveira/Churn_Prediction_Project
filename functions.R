@@ -72,11 +72,11 @@ RUS <- function(data,y,target = 0,seed=123){
   return(rbind(minority,majority))
 }
 
-evaluate <- function(ypred,ytrue,model,newdata,scores){
+evaluate <- function(ypred,ytrue,scores){
   acc <- accuracy(ypred,ytrue)
   rec <- recall(ypred,ytrue)
   decile_lift <- lift(scores,ytrue)
-  roc_curve <- roc.curve(scores.class0 = predict(model,newdata=newdata),weights.class0=newdata$Churn,curve=TRUE)
+  roc_curve <- roc.curve(scores.class0 = scores,weights.class0=ytrue,curve=TRUE)
   auc <- as.numeric(roc_curve['auc'])
   results <- matrix(c(acc,rec,decile_lift,auc),nrow=1)
   colnames(results) <- c("Accuracy","Recall","Lift","AUC")

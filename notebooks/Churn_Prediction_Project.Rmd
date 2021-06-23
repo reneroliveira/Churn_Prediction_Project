@@ -22,8 +22,6 @@ library(gridExtra)
 library(scales)
 library(performanceEstimation)
 library(class)
-# library(glmnet)
-# library(ROCR)
 library(PRROC)
 source("../functions.R") #Auxiliar functions script
 ```
@@ -127,7 +125,7 @@ train  %>% mutate(Churn=as.factor(Churn)) %>%
   group_by(Churn) %>% 
   summarise(has_vmail_plan=sum(Voice.mail.plan)/n()) %>%  ggplot() + geom_bar(aes(x=Churn,y=has_vmail_plan,fill=Churn),stat="identity") +
   scale_y_continuous(labels = scales::percent) + 
-  labs(title="% of customers with voice mail plan",y="") + theme_minimal()
+  labs(title="% of customers with voicemail plan",y="") + theme_minimal()
 ```
 
 On the other hand, we have much more churners with an international plan, comparing with non-churners. A possible explanation would be that international plan subscribers are finding better offers in this service with competitors. 
@@ -140,6 +138,9 @@ train  %>% mutate(Churn=as.factor(Churn)) %>%
   labs(title="% of customers with International plan",y="") + theme_minimal()
 ```
 
+```{r}
+plot_var("Total.day.minutes")
+```
 
 # Evaluation Metrics
 
@@ -199,18 +200,57 @@ resamples <- list("Original" = train,
                   "ROS" = ROS(train,"Churn"),
                   "RUS" = RUS(train,"Churn"),
                   "SMOTE" =  smote(Churn ~ ., train, perc.over = Majority/minority,perc.under=1))
-# resamples["SMOTE"][[1]]$Churn <- as.numeric(resamples["SMOTE"][[1]]$Churn)
-# ypred,ytrue,model,newdata,scores
-eval = list()
+
+#save(resamples,file="../data/resamples.rda")
+
+
 for(i in c("Original","ROS","RUS","SMOTE")){
   data <-  resamples[i][[1]]
   model <- glm(Churn ~ ., data = data, family = "binomial")
   scores <- predict(model,newdata =test)
   ypred <- logit2prob(scores)>0.5
   print(i)
-  print(evaluate(ypred,test$Churn,model,test,scores))
+  print(evaluate(ypred,test$Churn,scores))
 }
 ```
 
+## K-Nearest-Neighbors
+
+Let's compare KNN performance between the resamples generated before. We'll perform cross-validation to select k, using the undersampled dataset.
+
+```{r}
+# for(i in c("Original","ROS","RUS","SMOTE")){
+#   data <-  resamples[i][[1]]
+#   model <- glm(Churn ~ ., data = data, family = "binomial")
+#   scores <- predict(model,newdata =test)
+#   ypred <- logit2prob(scores)>0.5
+#   print(i)
+#   print(evaluate(ypred,test$Churn,model,test,scores))
+# }
+t2 <- dummy_cols(resamples["SMOTE"][[1]],select_columns = "Region") %>% select(-Region,-`Region_North Central`)
+tes2 <- dummy_cols(test,select_columns = "Region") %>% select(-Region,-`Region_North Central`)
+churn.knn = knn(train = t2[,-15] , test = tes2[,-15], cl = t2$Churn, k=5, prob=TRUE)
+knn.probs = attr(churn.knn,"prob")
+
+evaluate(churn.knn,tes2$Churn,knn.probs)
+
+
+n = nrow(resamples["RUS"][[1]])
+n_rep = 5
+k_values = c(2:15)
+
+lift_cv = matrix(NA, n_rep, length(k_values))
+
+for(i_n_rep in 1:n_rep){
+  i_treino = sample(1:n, n/2)
+  i_teste = seq(1:n)[-i_treino]
+  for(i_k in 1:length(k_values)){
+    reg_auto_poly = lm(mpg ~ poly(horsepower, i_degree), Auto[i_treino,])
+    pred_reg = predict(reg_auto_poly, Auto[i_teste,])
+    mse[i_n_rep, i_degree] = mean((pred_reg- Auto[i_teste,"mpg"])^2)
+  }
+}
+
+```
 
 # References
