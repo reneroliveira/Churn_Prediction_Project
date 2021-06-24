@@ -338,7 +338,7 @@ We’ll devote special attention to recall and top-decile lift and recall becaus
  \textbf{Logistic Regression}
  
  Logistic Regression models the log-odds of being positive (churner) as a linear function of the predictors.
- $$\log\left(\dfrac{p(y_i=1)}{1-p(y_i=1)}\right)=\beta_0+\sum_{j=1}^{p}\beta_jX_i+\eps_i$$
+ $$\log\left(\dfrac{p(y_i=1)}{1-p(y_i=1)}\right)=\beta_0+\sum_{j=1}^{p}\beta_jX_{ij}$$
  We estimate the coefficients by maximizing the likelihood of a binomial distribution model for the target.
  As before, we trained this model using the balanced resampled training sets and calculated the performance in the test set. Results follows in Table \ref{logit}.
  
