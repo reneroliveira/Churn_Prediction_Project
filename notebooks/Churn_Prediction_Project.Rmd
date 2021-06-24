@@ -46,8 +46,8 @@ train <- train %>% mutate(Churn=ifelse(Churn=="True",1,0),
                           Voice.mail.plan=ifelse(Voice.mail.plan=="Yes",1,0))
 
 test <- test %>% mutate(Churn=ifelse(Churn=="True",1,0),
-                          International.plan=ifelse(International.plan=="Yes",1,0),
-                          Voice.mail.plan=ifelse(Voice.mail.plan=="Yes",1,0))
+                        International.plan=ifelse(International.plan=="Yes",1,0),
+                        Voice.mail.plan=ifelse(Voice.mail.plan=="Yes",1,0))
 
 data(state) #load buit-in state dataset
 regions <- data.frame(cbind(state.abb,as.character(state.region)))
@@ -89,8 +89,8 @@ ggplot(data=corr,aes(x=Var2,y=Var1,fill = value)) +
   scale_fill_gradient2(mid="#fddbc7",high="red",low="white",
                        space="Lab",name = "Correlation\n") + 
   labs(x="",y="") + theme_minimal() + 
- theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))+
- coord_fixed() + 
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust = 1))+
+  coord_fixed() + 
   geom_text(aes(Var2, Var1, label = value), color = "black", size = 2.1)
 ```
 
@@ -99,7 +99,7 @@ As we can see above, the vast majority of the features are uncorrelated. But the
 train <- train %>% select(-Total.day.charge,-Total.eve.charge,
                           -Total.night.charge,-Total.intl.charge)
 test <- test %>% select(-Total.day.charge,-Total.eve.charge,
-                          -Total.night.charge,-Total.intl.charge)
+                        -Total.night.charge,-Total.intl.charge)
 # write.csv(train,"../data/train_cleaned.csv",row.names=FALSE)
 # write.csv(test,"../data/test_cleaned.csv",row.names=FALSE)
 names(train)
@@ -245,15 +245,15 @@ trControl <- trainControl(method  = "cv",
 data <- dummy_cols(resamples["RUS"][[1]],select_columns = "Region") %>% select(-Region,-`Region_North Central`)
 
 data <- data  %>%
-   mutate(Churn = factor(as.numeric(Churn)-1,
-           labels = make.names(levels(Churn))))
+  mutate(Churn = factor(as.numeric(Churn)-1,
+                        labels = make.names(levels(Churn))))
 
 cv.knn <- train(Churn ~ .,
-     method     = "knn",
-     tuneGrid   = expand.grid(k = 1:10),
-     trControl  = trControl,
-     preProcess = c("center","scale"),
-     data = data)
+                method     = "knn",
+                tuneGrid   = expand.grid(k = 1:10),
+                trControl  = trControl,
+                preProcess = c("center","scale"),
+                data = data)
 cv.knn
 ```
 
@@ -347,8 +347,8 @@ tunegrid <- expand.grid(.mtry = c(6))
 modellist <- list()
 
 data <- train  %>%
-   mutate(Churn = factor(as.numeric(Churn)-1,
-           labels = make.names(levels(Churn))))
+  mutate(Churn = factor(as.numeric(Churn)-1,
+                        labels = make.names(levels(Churn))))
 #train with different ntree parameters
 for (ntree in c(500,1000,1500,2000,2500)){
   set.seed(123)
@@ -385,7 +385,7 @@ final_results[13:16,]
 
 Again, resampled training sets enhanced recall, but the original dataset got a higher lift.
 
-###  Bagging-based ensembles
+##  Bagging-based ensembles
 
 Since now we've used preprocessed resampled datasets to deals with imbalance in the traning set. We can adapt existing algorithms to deal with this problem directly from  the original data. Now we're try three bagging variations: RUSBagging, ROSBagging and SMOTEBagging. The modification is that, instead of bootstrapping the entire dataset, for each bag, one uses RUS,ROS or SMOTE to create a balanced sample. More detailed explanations can be found in the article (@ensembles).
 
@@ -430,7 +430,7 @@ final_results[c(9,17:19),]
 
 All 3 methods yielded better recall measures than original bagging, but ROSBagging got a higher lift among them (although original bagging was better). The other metrics were pretty close among the 3 models.
 
-## AdaBoosting 
+## AdaBoost
 
 The function `bboost` is implemented on this [GitHub repo](https://github.com/shuzhiquan/IRIC) based on the article @iric. If you want to reproduce the following chunk, install the IRIC package following the repo instructions.
 
@@ -511,5 +511,9 @@ Although we have these champions for each metric, excluding KNN and the basic Lo
 
 A lift lower bound of 3.1 (Logistic + RUS/ROS) means we have 3.1 times more churners in the top decile than a random classifier would have. This is ~44%, but excluding logistic, all lifts were higher than 5, which corresponds to ~71% of churners in the top decile. Our lift champion, Random Forest almost reached the maximum lift, so using these models to target the top decile with a suitable offer would be a good idea to avoid churn.
 
+```{r}
+# library(xtable)
+# print(xtable(round(final_results,4), type = "latex",digits=c(0,4,4,4,4)))
+```
 
 # References

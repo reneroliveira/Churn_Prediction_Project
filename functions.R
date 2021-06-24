@@ -92,10 +92,3 @@ sourceDir <- function(path, trace = TRUE, ...) {
   }
 }
 
-#Reference: https://www.r-bloggers.com/2020/08/matrix-to-latex/
-array_to_LaTeX <- function(arr){
-  rows <- apply(arr, MARGIN=1, paste, collapse = " & ")
-  matrix_string <- paste(rows, collapse = " \\ ")
-  return(paste("\begin{bmatrix}", matrix_string, "\\end{bmatrix}"))
-}
-
